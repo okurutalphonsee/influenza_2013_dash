@@ -1,0 +1,175 @@
+---
+title: "INFLUENZA A H7N9 IN CHINA, 2013"
+format: dashboard
+theme: lux
+---
+
+```{r}
+# Load packages 
+if(!require(pacman)) install.packages("pacman")
+pacman::p_load(pacman,
+               tidyverse,
+               plotly,
+               reactable,
+               bslib,
+               bsicons,
+               shiny,
+               gapminder,
+               rnaturalearth,
+               countrycode,
+               htmltools,
+               rgeoboundaries,
+               outbreaks,
+               sf)
+```
+
+```{r}
+#Computations of the Key Metrics
+# view data
+#head(outbreaks::fluH7N9_china_2013)
+
+#Calculation of Key metrics
+province_summary <- fluH7N9_china_2013 %>% 
+  group_by(province) %>% 
+  summarise(total_cases = n()) 
+
+total_cases <- 
+    fluH7N9_china_2013 %>% 
+       nrow()
+
+total_hosp <- 
+    fluH7N9_china_2013 %>% 
+    filter(!is.na(date_of_hospitalisation)) %>% 
+       nrow()
+
+total_deaths <- 
+    fluH7N9_china_2013 %>% 
+    filter(outcome=="Death") %>% 
+       nrow()
+
+china_map <- rgeoboundaries::gb_adm1("china")
+
+# Check the keys to see if join will be successful
+#setdiff(province_summary$province, china_map$shapeName)
+#setdiff(china_map$shapeName, province_summary$province)
+# Some work to be done to harmonize these
+
+china_map <- china_map %>%
+  # Remove the strings Province, Municipality and Autonomous Region 
+  # to allow matching
+  mutate(province = str_trim(
+    str_remove(shapeName, "Province|Municipality|Autonomous Region")
+  ))
+
+# Check if join will work fine
+#setdiff(province_summary$province, china_map$province)
+
+# Fix Guangdong, which based on a quick Google is actually Guangzhou
+china_map <- china_map %>% 
+  mutate(province = if_else(province == "Guangzhou", "Guangdong", province)) 
+  
+# Check again
+#setdiff(province_summary$province, china_map$province)
+
+# Now join
+china_map_joined <- 
+  left_join(china_map, province_summary, by = "province") %>% 
+  # Create tooltip label 
+  mutate(tooltip_label = paste0(province, ": ", total_cases))
+
+china_map_plot <- ggplot(china_map_joined) +
+  geom_sf(aes(fill = total_cases, text = tooltip_label)) + 
+  theme_void() +
+  labs(fill = "Number of Cases") + 
+  theme(legend.position = "none")
+
+china_map_plot_ggplotly <- 
+  ggplotly(china_map_plot, tooltip = "text")
+```
+
+```{r}
+#Top20 countries by Life Expectancy
+plot_provinces <- 
+  fluH7N9_china_2013 %>% 
+  group_by(province) %>% 
+  summarise(total_cases = n()) %>% 
+     mutate(tooltip_label = paste(province,
+                                total_cases,
+                               sep=": ")) %>% 
+      ggplot(aes(y=reorder(province,total_cases),
+                 x=total_cases,
+                 fill=total_cases,
+                 ,text=tooltip_label))+
+       geom_col()+
+       theme(legend.position = "none")+
+       labs(x="Number of Cases",
+            y="")
+
+ggplotlyprovinces <- 
+  ggplotly(plot_provinces,tooltip = "text")
+```
+
+# HOME
+
+## {height=20%}
+
+```{r}
+value_box(
+  title = "Total Cases",
+  value = total_cases,
+  showcase = bsicons :: bs_icon("virus"),
+  theme = value_box_theme(bg = "#518fd6")
+)
+```
+
+```{r}
+value_box(
+  title = "Total Hospitalizations",
+  value = total_hosp,
+  showcase = bsicons :: bs_icon("hospital"),
+  theme = value_box_theme(bg = "#214773")
+)
+```
+
+```{r}
+value_box(
+  title = "Total Deaths",
+  value = total_deaths,
+  showcase = bsicons :: bs_icon("file-medical"),
+  theme = value_box_theme(bg = "#3f71ab")
+)
+```
+
+## {height=80%}
+
+### {width=35%}
+
+```{r title = "Number of Cases by Province"}
+ggplotlyprovinces
+```
+
+### {width=65%}
+
+```{r title = "Map of Provinces by Number of Cases"}
+china_map_plot_ggplotly
+```
+
+# DOWNLOAD DATA
+
+```{r}
+htmltools::browsable(
+   tagList(
+   reactable(fluH7N9_china_2013,
+          elementId = "fluH7N9_china_2013-Table",
+          searchable = T,
+          filterable = T,
+          bordered = T,
+          compact = T),
+   
+     tags$button("Download as CSV",
+            onclick = 
+              "Reactable.downloadDataCSV('fluH7N9_china_2013-Table')")
+ )
+)
+```
+ 
